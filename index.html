@@ -12,6 +12,7 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
+<meta name="hibi-version" content="2026-11-03.1">
 <title>Hibi</title>
 <style>html,body{margin:0}[hidden]{display:none!important}</style>
 <style>
@@ -730,9 +731,21 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
       .then(function () { ev.target.value = ''; });
   });
 
+  // GitHub Pages lets phones keep an old copy for up to 10 minutes. When Hibi opens, it asks for the
+  // newest copy directly and reloads once if the version has changed.
+  function checkForUpdate() {
+    var mine = (document.querySelector('meta[name="hibi-version"]') || {}).content;
+    fetch('./?check=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (html) {
+      var m = html.match(/name="hibi-version" content="([^"]+)"/);
+      if (m && mine && m[1] !== mine) location.replace('./?v=' + encodeURIComponent(m[1]) + location.hash);
+    }).catch(function () {});
+  }
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') checkForUpdate(); });
+
   renderAll();
   route();
   syncNow();
+  checkForUpdate();
 })();
 </script>
 
