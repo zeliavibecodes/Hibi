@@ -276,8 +276,6 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
     { id: 'flash', name: 'Flash cards', g: 'practice' },
     { id: 'passive', name: 'Passive listening', g: 'practice' },
     { id: 'gaming', name: 'Gaming', g: 'practice' },
-    { id: 'speaking', name: 'Speaking', g: 'practice' },
-    { id: 'practice-other', name: 'Other', g: 'practice' },
     { id: 'manga', name: 'Manga', g: 'reading' },
     { id: 'jp-novel', name: 'Japanese novel', g: 'reading' },
     { id: 'book', name: 'Book', g: 'reading' },
@@ -340,6 +338,26 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
   var entries = stored ? stored.entries : examples();
   var deleted = (stored && stored.deleted) || {};
   entries.forEach(function (e) { if (!e.id) e.id = (e.ex ? 'ex' : '') + newId(); if (!e.t) e.t = Date.now(); });
+
+  // One-time tidy of the Oft import (3 Nov): sessions with no name were flash cards,
+  // speaking is not tracked, and four rows were re-entries of sessions already logged.
+  (function tidyOft() {
+    var REENTRIES = [
+      'oft-2026-10-28-flash-30-2026-11-01T12:51:21Z',
+      'oft-2026-10-27-flash-30-2026-11-01T12:51:30Z',
+      'oft-2026-10-26-flash-30-2026-11-01T12:51:43Z',
+      'oft-2026-10-26-gaming-60-2026-10-26T23:00:26Z'
+    ];
+    var now = Date.now(), changed = false;
+    REENTRIES.forEach(function (id) { if (!deleted[id]) { deleted[id] = now; changed = true; } });
+    entries = entries.filter(function (e) {
+      if (deleted[e.id]) { changed = true; return false; }
+      if (e.c === 'speaking') { deleted[e.id] = now; changed = true; return false; }
+      if (e.c === 'practice-other') { e.c = 'flash'; e.t = now; changed = true; }
+      return !!catById[e.c];
+    });
+    if (changed) { try { localStorage.setItem(STORE, JSON.stringify({ entries: entries, deleted: deleted })); } catch (e) {} }
+  })();
   function hasEx() { return entries.some(function (e) { return e.ex; }); }
 
   // ----- state -----
@@ -624,15 +642,16 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
   });
   // Oft export: Date,Activity,SubActivity,Minutes,CreatedAt. Each row becomes a practice entry.
   // The id comes from the row itself, so importing the same file twice adds nothing.
-  var OFT_MAP = { 'reading': 'reading-time', 'listening': 'listening', 'flash cards': 'flash', 'passive listening': 'passive', 'gaming': 'gaming', 'speaking': 'speaking' };
+  var OFT_MAP = { 'reading': 'reading-time', 'listening': 'listening', 'flash cards': 'flash', 'passive listening': 'passive', 'gaming': 'gaming', '': 'flash' };
   function fromOft(txt) {
     var out = [], seen = {};
     txt.split(/\r?\n/).slice(1).forEach(function (line) {
       var p = line.split(',');
       if (p.length < 5 || !/^\d{4}-\d{2}-\d{2}$/.test(p[0])) return;
       var mins = Math.round(+p[3]); if (!(mins > 0)) return;
-      var c = OFT_MAP[(p[2] || '').trim().toLowerCase()] || 'practice-other';
-      var id = 'oft-' + p[0] + '-' + c + '-' + mins + '-' + (p[4] || '').trim();
+      var sub = (p[2] || '').trim().toLowerCase();
+      var c = OFT_MAP[sub]; if (!c) return;   // speaking and anything unknown are left out
+      var id = 'oft-' + p[0] + '-' + (sub ? c : 'practice-other') + '-' + mins + '-' + (p[4] || '').trim();
       if (seen[id]) id += '-' + (seen[id]++); else seen[id] = 1;
       var t = Date.parse(p[4]) || Date.now();
       out.push({ id: id, t: t, d: p[0], c: c, m: mins });
