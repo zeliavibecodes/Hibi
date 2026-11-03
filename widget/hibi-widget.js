@@ -2,6 +2,12 @@
 // Left: today. Right: this month, shaded by Japanese practice time, with a dot when you finished something.
 // Bottom: three words to review from your jpdb decks, new ones each day.
 // Run it once inside Scriptable to save your GitHub key (same as Hibi) and your jpdb key (same as Yomu).
+//
+// Home Screen widgets only get a few seconds to load, so the widget itself never reads your jpdb decks.
+// Your word list is saved on the phone whenever you open this script in Scriptable, and the widget picks
+// today's three words from that saved list. Practice comes from the Hibi Gist, with a short time limit.
+const VERSION = '2026-11-04.2';
+const SCRIPT_URL = 'https://raw.githubusercontent.com/zeliavibecodes/Hibi/main/widget/hibi-widget.js';
 
 const HIBI_URL = 'https://zeliavibecodes.github.io/Hibi/';
 const YOMU_URL = 'https://zeliavibecodes.github.io/Yomu/';
@@ -61,7 +67,7 @@ const TODAY = key(today);
 async function gh(path) {
   const r = new Request('https://api.github.com' + path);
   r.headers = { Authorization: 'Bearer ' + getKey(KC.gh), Accept: 'application/vnd.github+json' };
-  r.timeoutInterval = 15;
+  r.timeoutInterval = config.runsInWidget ? 6 : 15;
   const body = await r.loadJSON();
   if (r.response.statusCode >= 400) throw new Error('GitHub ' + r.response.statusCode);
   return body;
@@ -79,7 +85,7 @@ async function loadEntries() {
     const g = await gh('/gists/' + id);
     const f = g.files[SYNC_FILE];
     let text = f.content;
-    if (f.truncated) text = await new Request(f.raw_url).loadString();
+    if (f.truncated) { const rr = new Request(f.raw_url); rr.timeoutInterval = config.runsInWidget ? 6 : 15; text = await rr.loadString(); }
     const data = JSON.parse(text || '{}');
     const entries = (data.entries || []).filter((e) => !(data.deleted || {})[e.id]);
     cache.write('entries.json', entries);
@@ -123,10 +129,9 @@ function pickForToday(list) {
   }
   return out;
 }
-async function loadWords() {
-  const saved = cache.read('words.json');
-  if (saved && saved.day === TODAY) return saved.words;
-  if (!getKey(KC.jpdb)) return saved ? saved.words : null;
+// Reads every deck from jpdb and saves the word list on the phone. Only runs inside the Scriptable app.
+async function refreshVocab() {
+  if (!getKey(KC.jpdb)) return false;
   try {
     const decks = (await jpdb('list-user-decks', { fields: ['id'] })).decks.map((d) => d[0]);
     const seen = new Set(), ids = [];
@@ -140,15 +145,39 @@ async function loadWords() {
       const r = await jpdb('lookup-vocabulary', { list: part, fields: ['spelling', 'reading', 'meanings_chunks', 'card_state'] });
       (r.vocabulary_info || []).forEach((info) => {
         if (!info) return;
-        list.push({ spelling: info[0], reading: info[1], meaning: shortMeaning(info[2]), state: stateOf(info[3]) });
+        const st = stateOf(info[3]);
+        if (st === 'due' || st === 'failed' || st === 'learning' || st === 'new') list.push({ s: info[0], r: info[1], m: shortMeaning(info[2]), st });
       });
     }
-    const words = pickForToday(list);
-    cache.write('words.json', { day: TODAY, words });
-    return words;
+    cache.write('vocab.json', { at: Date.now(), list });
+    const p = fm.joinPath(dir, 'words.json'); if (fm.fileExists(p)) fm.remove(p);
+    return true;
   } catch (e) {
-    return saved ? saved.words : null;
+    return false;
   }
+}
+// No network: today's three words come from the saved list.
+function loadWords() {
+  const saved = cache.read('words.json');
+  if (saved && saved.day === TODAY) return saved.words;
+  const vocab = cache.read('vocab.json');
+  if (!vocab || !vocab.list.length) return saved ? saved.words : null;
+  const words = pickForToday(vocab.list.map((w) => ({ spelling: w.s, reading: w.r, meaning: w.m, state: w.st })));
+  cache.write('words.json', { day: TODAY, words });
+  return words;
+}
+
+// Replaces this script with the newest version from GitHub, so changes reach the phone without re-saving the file.
+async function selfUpdate() {
+  try {
+    const r = new Request(SCRIPT_URL + '?t=' + Date.now()); r.timeoutInterval = 10;
+    const code = await r.loadString();
+    const m = code.match(/const VERSION = '([^']+)'/);
+    if (!m || m[1] === VERSION || r.response.statusCode !== 200) return false;
+    const f = FileManager.iCloud().fileExists(module.filename) ? FileManager.iCloud() : FileManager.local();
+    f.writeString(module.filename, code);
+    return true;
+  } catch (e) { return false; }
 }
 
 // ---------- drawing ----------
@@ -260,7 +289,7 @@ function build(entries, words) {
       if (i < words.length - 1) wordsRow.addSpacer(12);
     });
   } else {
-    text(wordsRow, getKey(KC.jpdb) ? 'Words will appear when jpdb can be reached.' : 'Open Scriptable and run this script to add your jpdb key.', Font.systemFont(12), C.muted);
+    text(wordsRow, getKey(KC.jpdb) ? 'Open Scriptable and run Hibi once to load your words.' : 'Open Scriptable and run Hibi to add your jpdb key.', Font.systemFont(12), C.muted);
   }
   wordsRow.addSpacer();
 
@@ -272,25 +301,30 @@ function build(entries, words) {
 }
 
 // ---------- run ----------
-if (config.runsInApp && (!getKey(KC.gh) || !getKey(KC.jpdb) || args.queryParameters.keys)) {
-  await askKeys();
-} else if (config.runsInApp) {
-  const a = new Alert();
-  a.title = 'Hibi widget';
-  a.addAction('Preview widget');
-  a.addAction('Change keys');
-  a.addAction('Refresh words');
-  a.addCancelAction('Close');
-  const pick = await a.present();
-  if (pick === 1) await askKeys();
-  if (pick === 2) { const p = fm.joinPath(dir, 'words.json'); if (fm.fileExists(p)) fm.remove(p); }
-  var closed = pick === -1;
+if (config.runsInWidget) {
+  // Practice from the Gist, but never wait more than 8 seconds; fall back to the saved copy.
+  const entries = await Promise.race([loadEntries(), new Promise((res) => Timer.schedule(8000, false, () => res(cache.read('entries.json'))))]);
+  Script.setWidget(build(entries, loadWords()));
+  Script.complete();
+} else {
+  if (await selfUpdate()) {
+    const u = new Alert(); u.title = 'Hibi widget updated'; u.message = 'Run the script again to use the new version.'; u.addAction('OK'); await u.present();
+    Script.complete();
+  } else {
+    if (!getKey(KC.gh) || !getKey(KC.jpdb)) await askKeys();
+    const a = new Alert();
+    a.title = 'Hibi widget';
+    a.message = 'Version ' + VERSION;
+    a.addAction('Preview widget');
+    a.addAction('Change keys');
+    a.addCancelAction('Close');
+    const pick = await a.present();
+    if (pick === 1) await askKeys();
+    if (pick !== -1) {
+      await refreshVocab();
+      const entries = await loadEntries();
+      await build(entries, loadWords()).presentLarge();
+    }
+    Script.complete();
+  }
 }
-
-if (typeof closed === 'undefined' || !closed) {
-  const [entries, words] = await Promise.all([loadEntries(), loadWords()]);
-  const widget = build(entries, words);
-  if (config.runsInWidget) Script.setWidget(widget);
-  else await widget.presentLarge();
-}
-Script.complete();
