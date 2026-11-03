@@ -371,7 +371,7 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
   var period = 'month';
 
   // ----- calendar -----
-  function byDay() { var m = {}; entries.forEach(function (e) { (m[e.d] = m[e.d] || []).push(e); }); return m; }
+  function byDay() { var m = {}; entries.forEach(function (e) { if (e.u) return; (m[e.d] = m[e.d] || []).push(e); }); return m; }
 
   function renderCalendar() {
     document.getElementById('calTitle').textContent = MONTHS[view.m] + ' ' + view.y;
@@ -397,7 +397,7 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
   function renderDay() {
     var d = parse(selected);
     document.getElementById('dayTitle').textContent = selected === TODAYK ? 'Today' : nice(d);
-    var list = entries.map(function (e, i) { return { e: e, i: i }; }).filter(function (x) { return x.e.d === selected; });
+    var list = entries.map(function (e, i) { return { e: e, i: i }; }).filter(function (x) { return x.e.d === selected && !x.e.u; });
     list.sort(function (a, b) { return GROUPS.indexOf(grpById[catById[a.e.c].g]) - GROUPS.indexOf(grpById[catById[b.e.c].g]); });
     if (!list.length) { document.getElementById('dayList').innerHTML = '<p class="empty">Nothing logged.</p>'; return; }
     document.getElementById('dayList').innerHTML = list.map(function (x) {
@@ -420,7 +420,10 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
     var r = periodRange(), sk = key(r.s), ek = key(r.e);
     var days = Math.round((r.e - r.s) / 864e5) + 1;
     document.getElementById('rangeLabel').textContent = nice(r.s) + ' to ' + nice(r.e) + ' · ' + days + (days === 1 ? ' day' : ' days');
-    var inR = entries.filter(function (e) { return e.d >= sk && e.d <= ek; });
+    // Entries with no day (u) only count toward the year, since they don't belong to a week or month.
+    var inR = entries.filter(function (e) { return e.d >= sk && e.d <= ek && (!e.u || period === 'year'); });
+    // A finished Japanese manga or novel also counts as a book; a finished Japanese game also counts as a video game.
+    var ALSO = { book: ['manga', 'jp-novel'], game: ['jp-game'] };
     document.getElementById('groups').innerHTML = GROUPS.map(function (g) {
       var cats = CATS.filter(function (c) { return c.g === g.id; });
       var ge = inR.filter(function (e) { return catById[e.c].g === g.id; });
@@ -434,15 +437,18 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
       } else if (g.kind === 'day') {
         tot = ge.length + (ge.length === 1 ? ' day' : ' days'); note = '';
       } else {
-        tot = ge.length + ' finished'; note = '';
+        tot = ge.length + ' finished';
+        var nodate = ge.filter(function (e) { return e.u; }).length;
+        note = nodate ? 'Includes ' + nodate + ' from before Hibi, with no day.' : '';
       }
       var rows = cats.map(function (c) {
-        var ce = ge.filter(function (e) { return e.c === c.id; });
+        var ce = ge.filter(function (e) { return e.c === c.id || (ALSO[c.id] || []).indexOf(e.c) !== -1; });
         var v = g.kind === 'time' ? fmtMins(ce.reduce(function (a, e) { return a + e.m; }, 0)) : String(ce.length);
         return '<div class="row' + (ce.length ? '' : ' zero') + '"><span class="sw" style="background:' + g.color + '"></span><span class="name">' + c.name + '</span><span class="val">' + v + '</span></div>';
       }).join('');
       return '<div class="group"><div class="ghead"><h2><i style="background:' + g.color + '"></i>' + g.name + '</h2><span class="tot">' + tot + '</span></div>' +
-        (note ? '<p class="gnote">' + note + '</p>' : '') + (cats.length > 1 ? rows : '') + '</div>';
+        (note ? '<p class="gnote">' + note + '</p>' : '') + (cats.length > 1 ? rows : '') +
+        (g.id === 'reading' ? '<p class="gnote" style="margin-top:6px">Book includes Japanese manga and novels.</p>' : g.id === 'games' ? '<p class="gnote" style="margin-top:6px">Video game includes Japanese games.</p>' : '') + '</div>';
     }).join('');
   }
 
