@@ -545,7 +545,7 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
   function toast(t) { var el = document.getElementById('toast'); el.textContent = t; el.hidden = false; clearTimeout(tt); tt = setTimeout(function () { el.hidden = true; }, 1600); }
 
   // ----- events -----
-  document.getElementById('grid').addEventListener('click', function (ev) { var b = ev.target.closest('.day'); if (!b) return; selected = b.dataset.k; var d = parse(selected); if (d.getMonth() !== view.m) { view.y = d.getFullYear(); view.m = d.getMonth(); } renderCalendar(); });
+  document.getElementById('grid').addEventListener('click', function (ev) { var b = ev.target.closest('.day'); if (!b) return; selected = b.dataset.k; renderCalendar(); });
   document.getElementById('dayList').addEventListener('click', function (ev) { var b = ev.target.closest('.del'); if (!b) return; var gone = entries.splice(+b.dataset.i, 1)[0]; if (gone && !gone.ex) deleted[gone.id] = Date.now(); save(); renderAll(); toast('Removed'); });
   document.getElementById('prevM').addEventListener('click', function () { view.m--; if (view.m < 0) { view.m = 11; view.y--; } renderCalendar(); });
   document.getElementById('nextM').addEventListener('click', function () { view.m++; if (view.m > 11) { view.m = 0; view.y++; } renderCalendar(); });
