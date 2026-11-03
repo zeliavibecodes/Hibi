@@ -139,6 +139,11 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
 .datepick { display: flex; align-items: center; font-size: 16px; }
 .datepick .icon-btn { width: 36px; color: var(--muted); }
 .datepick .icon-btn svg { width: 18px; height: 18px; }
+.datelabel { position: relative; min-height: 44px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 10px; background: var(--fill); }
+.datelabel input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; border: 0; padding: 0; cursor: pointer; }
+.durs { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 2px; }
+.custom { display: flex; align-items: center; gap: 10px; margin: -4px 0 14px; color: var(--muted); font-size: 14px; }
+.custom input { width: 90px; min-height: 40px; border: 0; border-radius: 10px; background: var(--fill); color: var(--ink); padding: 0 12px; font: inherit; font-size: 16px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
 .chip { border: 0; border-radius: 999px; padding: 9px 14px; font-size: 15px; background: var(--fill); color: var(--ink); display: inline-flex; align-items: center; gap: 7px; min-height: 40px; }
 .chip i { width: 7px; height: 7px; border-radius: 50%; }
@@ -205,7 +210,7 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
       <button class="text-btn" id="cancelAdd">Cancel</button>
       <div class="datepick">
         <button class="icon-btn" id="dPrev" aria-label="Previous day"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
-        <span id="dLabel">Today</span>
+        <label class="datelabel"><span id="dLabel">Today</span><input type="date" id="dInput" aria-label="Pick a day"></label>
         <button class="icon-btn" id="dNext" aria-label="Next day"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
       </div>
     </div>
@@ -213,6 +218,7 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
     <div id="durBox" hidden>
       <p class="sec">How long</p>
       <div class="durs" id="durs"></div>
+      <div class="custom"><label for="customMins">Or type minutes</label><input type="number" id="customMins" inputmode="numeric" min="1" max="1440" placeholder="e.g. 210"></div>
     </div>
     <button class="primary" id="saveAdd" disabled>Choose something to log</button>
   </div>
@@ -244,12 +250,12 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
 
     <div class="setsec">
       <h3>Backup</h3>
-      <p class="hint">Save all your entries as a file, for example to iCloud Drive. Loading a file adds its entries to what is already here.</p>
+      <p class="hint">Save all your entries as a file, for example to iCloud Drive. Import adds the entries from a Hibi backup or an Oft export to what is already here.</p>
       <div class="btnrow">
         <button class="secondary" id="exportBtn">Export</button>
         <button class="secondary" id="importBtn">Import</button>
       </div>
-      <input type="file" id="importFile" accept="application/json,.json" hidden>
+      <input type="file" id="importFile" accept="application/json,.json,text/csv,.csv" hidden>
       <p class="status" id="backupMsg" role="status"></p>
     </div>
   </div>
@@ -270,6 +276,8 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
     { id: 'flash', name: 'Flash cards', g: 'practice' },
     { id: 'passive', name: 'Passive listening', g: 'practice' },
     { id: 'gaming', name: 'Gaming', g: 'practice' },
+    { id: 'speaking', name: 'Speaking', g: 'practice' },
+    { id: 'practice-other', name: 'Other', g: 'practice' },
     { id: 'manga', name: 'Manga', g: 'reading' },
     { id: 'jp-novel', name: 'Japanese novel', g: 'reading' },
     { id: 'book', name: 'Book', g: 'reading' },
@@ -433,10 +441,12 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
 
   // ----- add sheet -----
   var add = { c: null, m: 30, d: TODAYK };
-  var DURS = [15, 30, 45, 60];
+  var DURS = [15, 30, 45, 60, 90, 120];
   function renderSheet() {
     var dd = parse(add.d);
     document.getElementById('dLabel').textContent = add.d === TODAYK ? 'Today' : nice(dd);
+    var di = document.getElementById('dInput'); di.value = add.d; di.max = TODAYK;
+    var cm = document.getElementById('customMins'); if (DURS.indexOf(add.m) === -1) { if (document.activeElement !== cm) cm.value = add.m; } else if (document.activeElement !== cm) cm.value = '';
     document.getElementById('dNext').disabled = add.d >= TODAYK;
     document.getElementById('pickers').innerHTML = GROUPS.map(function (g) {
       return '<p class="sec">' + (g.kind === 'time' ? 'Time spent' : g.kind === 'day' ? 'Days away' : 'Finished · ' + g.name) + '</p><div class="chips">' +
@@ -486,6 +496,8 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
   });
   document.getElementById('pickers').addEventListener('click', function (ev) { var b = ev.target.closest('.chip'); if (!b) return; add.c = b.dataset.c; renderSheet(); });
   document.getElementById('durs').addEventListener('click', function (ev) { var b = ev.target.closest('button'); if (!b) return; add.m = +b.dataset.m; renderSheet(); });
+  document.getElementById('dInput').addEventListener('change', function (ev) { var v = ev.target.value; if (v && v <= TODAYK) { add.d = v; renderSheet(); } });
+  document.getElementById('customMins').addEventListener('input', function (ev) { var v = Math.round(+ev.target.value); if (v > 0 && v <= 1440) { add.m = v; renderSheet(); } });
   document.getElementById('dPrev').addEventListener('click', function () { add.d = key(addDays(parse(add.d), -1)); renderSheet(); });
   document.getElementById('dNext').addEventListener('click', function () { if (add.d < TODAYK) { add.d = key(addDays(parse(add.d), 1)); renderSheet(); } });
   document.getElementById('saveAdd').addEventListener('click', function () {
@@ -610,20 +622,38 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
       msg.textContent = 'Saved ' + data.entries.length + ' entries as ' + name + '.';
     }
   });
+  // Oft export: Date,Activity,SubActivity,Minutes,CreatedAt. Each row becomes a practice entry.
+  // The id comes from the row itself, so importing the same file twice adds nothing.
+  var OFT_MAP = { 'reading': 'reading-time', 'listening': 'listening', 'flash cards': 'flash', 'passive listening': 'passive', 'gaming': 'gaming', 'speaking': 'speaking' };
+  function fromOft(txt) {
+    var out = [], seen = {};
+    txt.split(/\r?\n/).slice(1).forEach(function (line) {
+      var p = line.split(',');
+      if (p.length < 5 || !/^\d{4}-\d{2}-\d{2}$/.test(p[0])) return;
+      var mins = Math.round(+p[3]); if (!(mins > 0)) return;
+      var c = OFT_MAP[(p[2] || '').trim().toLowerCase()] || 'practice-other';
+      var id = 'oft-' + p[0] + '-' + c + '-' + mins + '-' + (p[4] || '').trim();
+      if (seen[id]) id += '-' + (seen[id]++); else seen[id] = 1;
+      var t = Date.parse(p[4]) || Date.now();
+      out.push({ id: id, t: t, d: p[0], c: c, m: mins });
+    });
+    return { entries: out, deleted: {} };
+  }
   document.getElementById('importBtn').addEventListener('click', function () { document.getElementById('importFile').click(); });
   document.getElementById('importFile').addEventListener('change', function (ev) {
     var f = ev.target.files[0], msg = document.getElementById('backupMsg');
     if (!f) return;
     f.text().then(function (txt) {
-      var data = JSON.parse(txt);
+      var data = /^\s*Date,Activity,/.test(txt) ? fromOft(txt) : JSON.parse(txt);
       if (Array.isArray(data)) data = { entries: data, deleted: {} };
       if (!data || !Array.isArray(data.entries)) throw new Error('bad');
       data.entries.forEach(function (e) { if (!e.id) e.id = newId(); if (!e.t) e.t = Date.now(); delete e.ex; });
       var before = realOnly().entries.length;
+      entries = entries.filter(function (e) { return !e.ex; });  // real data is coming in, so drop the examples
       var merged = mergeData(realOnly(), data);
       applyMerged(merged); scheduleSync();
       msg.textContent = 'Added ' + (merged.entries.length - before) + ' entries from ' + f.name + '.';
-    }).catch(function () { msg.textContent = 'This file is not a Hibi backup. Choose a file you exported from Hibi.'; })
+    }).catch(function () { msg.textContent = 'This file is not a Hibi backup or an Oft export. Choose one of those.'; })
       .then(function () { ev.target.value = ''; });
   });
 
