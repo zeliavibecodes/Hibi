@@ -339,17 +339,22 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
   var deleted = (stored && stored.deleted) || {};
   entries.forEach(function (e) { if (!e.id) e.id = (e.ex ? 'ex' : '') + newId(); if (!e.t) e.t = Date.now(); });
 
-  // One-time tidy of the Oft import (3 Nov): sessions with no name were flash cards,
-  // speaking is not tracked, and four rows were re-entries of sessions already logged.
+  // One-time tidy of the Oft import (3 Nov): sessions with no name were flash cards, speaking is not tracked.
+  // An earlier version wrongly removed four real sessions (done twice on the same day); they are put back here.
   (function tidyOft() {
-    var REENTRIES = [
-      'oft-2026-10-28-flash-30-2026-11-01T12:51:21Z',
-      'oft-2026-10-27-flash-30-2026-11-01T12:51:30Z',
-      'oft-2026-10-26-flash-30-2026-11-01T12:51:43Z',
-      'oft-2026-10-26-gaming-60-2026-10-26T23:00:26Z'
+    var RESTORE = [
+      { id: 'oft-2026-10-28-flash-30-2026-11-01T12:51:21Z', d: '2026-10-28', c: 'flash', m: 30 },
+      { id: 'oft-2026-10-27-flash-30-2026-11-01T12:51:30Z', d: '2026-10-27', c: 'flash', m: 30 },
+      { id: 'oft-2026-10-26-flash-30-2026-11-01T12:51:43Z', d: '2026-10-26', c: 'flash', m: 30 },
+      { id: 'oft-2026-10-26-gaming-60-2026-10-26T23:00:26Z', d: '2026-10-26', c: 'gaming', m: 60 }
     ];
     var now = Date.now(), changed = false;
-    REENTRIES.forEach(function (id) { if (!deleted[id]) { deleted[id] = now; changed = true; } });
+    var imported = entries.some(function (e) { return /^oft-/.test(e.id); });
+    RESTORE.forEach(function (r) {
+      if (!deleted[r.id]) return;           // never removed here: nothing to undo
+      delete deleted[r.id]; changed = true;
+      if (imported && !entries.some(function (e) { return e.id === r.id; })) entries.push({ id: r.id, t: now, d: r.d, c: r.c, m: r.m });
+    });
     entries = entries.filter(function (e) {
       if (deleted[e.id]) { changed = true; return false; }
       if (e.c === 'speaking') { deleted[e.id] = now; changed = true; return false; }
@@ -563,7 +568,12 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
   function mergeData(a, b) {
     var del = {}, byId = {};
     [a.deleted || {}, b.deleted || {}].forEach(function (m) { Object.keys(m).forEach(function (id) { del[id] = Math.max(del[id] || 0, m[id]); }); });
-    [a.entries || [], b.entries || []].forEach(function (list) { list.forEach(function (e) { if (!e || !e.id || e.ex || del[e.id]) return; var o = byId[e.id]; if (!o || (e.t || 0) > (o.t || 0)) byId[e.id] = e; }); });
+    [a.entries || [], b.entries || []].forEach(function (list) { list.forEach(function (e) { if (!e || !e.id || e.ex) return; var o = byId[e.id]; if (!o || (e.t || 0) > (o.t || 0)) byId[e.id] = e; }); });
+    Object.keys(byId).forEach(function (id) {
+      if (!del[id]) return;
+      if (del[id] >= (byId[id].t || 0)) delete byId[id];   // removed after it was saved
+      else delete del[id];                                 // saved again after it was removed
+    });
     return { entries: Object.keys(byId).map(function (id) { return byId[id]; }), deleted: del };
   }
   function realOnly() { return { entries: entries.filter(function (e) { return !e.ex; }), deleted: deleted }; }
