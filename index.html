@@ -106,6 +106,21 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
 .gnote { color: var(--muted); font-size: 13px; margin: 0 0 6px; }
 .row.zero .name, .row.zero .val { color: var(--faint); }
 
+/* Settings */
+.topbar { display: flex; justify-content: flex-end; margin: 0 -10px -24px; }
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.field label { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.field input { width: 100%; min-height: 46px; border: 0; border-radius: 12px; background: var(--fill); color: var(--ink); padding: 0 14px; font: inherit; font-size: 16px; }
+.hint { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+.hint a { color: var(--ink-2); }
+.status { font-size: 14px; color: var(--ink-2); margin: 10px 0 0; min-height: 20px; }
+.secondary { width: 100%; border: 0; background: var(--fill); color: var(--ink); min-height: 50px; border-radius: 14px; font-size: 16px; font-weight: 600; }
+.btnrow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.setsec { padding: 6px 0 22px; border-bottom: 1px solid var(--hair); margin-bottom: 18px; }
+.setsec:last-child { border-bottom: 0; margin-bottom: 0; padding-bottom: 4px; }
+.setsec h3 { margin: 0 0 6px; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+.linkbtn { background: none; border: 0; color: var(--muted); font-size: 14px; padding: 10px 0 0; text-decoration: underline; min-height: 44px; }
+
 /* Add button */
 .add-wrap { position: fixed; left: 0; right: 0; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); z-index: 5; display: flex; justify-content: center; pointer-events: none; }
 .add { pointer-events: auto; box-shadow: 0 12px 28px -12px rgba(0,0,0,.45); border: 0; background: var(--ink); color: var(--paper); height: 46px; padding: 0 20px; border-radius: 999px; font-size: 16px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
@@ -143,6 +158,9 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
 </head>
 <body>
 <main class="wrap">
+  <div class="topbar">
+    <button class="icon-btn" id="openSettings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
+  </div>
   <div class="top-tabs" role="tablist" aria-label="Pages">
     <button role="tab" id="tab-calendar" data-tab="calendar" aria-controls="page-calendar">Calendar</button>
     <button role="tab" id="tab-tracked" data-tab="tracked" aria-controls="page-tracked">Tracked</button>
@@ -199,6 +217,43 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
     <button class="primary" id="saveAdd" disabled>Choose something to log</button>
   </div>
 </div>
+<div class="sheet" id="settings" role="dialog" aria-modal="true" aria-labelledby="setTitle" hidden>
+  <div class="in">
+    <div class="grip"></div>
+    <div class="shead">
+      <h2 id="setTitle" style="margin:0 6px;font-size:17px;font-weight:600">Settings</h2>
+      <button class="text-btn" id="closeSettings" style="color:var(--ink);font-weight:600">Done</button>
+    </div>
+
+    <div class="setsec">
+      <h3>Sync</h3>
+      <p class="hint">Keeps your entries in a private GitHub Gist, so they follow you to a new phone or another device. You can use the same GitHub key as Yomu.</p>
+      <div id="syncOff">
+        <div class="field">
+          <label for="ghInput">GitHub key</label>
+          <input id="ghInput" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ghp_…">
+        </div>
+        <button class="primary" id="syncConnect">Connect</button>
+      </div>
+      <div id="syncOn" hidden>
+        <button class="secondary" id="syncNowBtn">Sync now</button>
+        <button class="linkbtn" id="syncDisconnect">Disconnect this device</button>
+      </div>
+      <p class="status" id="syncMsg" role="status"></p>
+    </div>
+
+    <div class="setsec">
+      <h3>Backup</h3>
+      <p class="hint">Save all your entries as a file, for example to iCloud Drive. Loading a file adds its entries to what is already here.</p>
+      <div class="btnrow">
+        <button class="secondary" id="exportBtn">Export</button>
+        <button class="secondary" id="importBtn">Import</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+      <p class="status" id="backupMsg" role="status"></p>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script>
@@ -238,9 +293,23 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
   var TODAYK = key(TODAY);
 
   // ----- storage -----
-  var STORE = 'hibi.v1';
-  function load() { try { var s = localStorage.getItem(STORE); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
-  function save() { try { localStorage.setItem(STORE, JSON.stringify(entries)); } catch (e) {} }
+  // Each entry: { id, t (time it was saved), d (day), c (category), m (minutes, for time) }.
+  // Removed entries are remembered in `deleted` (id -> time) so a removal also reaches other devices.
+  var STORE = 'hibi.v2', OLD_STORE = 'hibi.v1', SETTINGS = 'hibi.settings';
+  function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function load() {
+    try {
+      var s = localStorage.getItem(STORE);
+      if (s) return JSON.parse(s);
+      var old = localStorage.getItem(OLD_STORE);
+      if (old) return { entries: JSON.parse(old), deleted: {} };
+    } catch (e) {}
+    return null;
+  }
+  function save() { try { localStorage.setItem(STORE, JSON.stringify({ entries: entries, deleted: deleted })); } catch (e) {} scheduleSync(); }
+  function loadSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS)) || {}; } catch (e) { return {}; } }
+  function saveSettings() { try { localStorage.setItem(SETTINGS, JSON.stringify(settings)); } catch (e) {} }
+  var settings = loadSettings();
 
   function examples() {
     var seed = 7; function rnd() { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
@@ -259,8 +328,10 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
     return out.filter(function (e) { return parse(e.d) <= TODAY; });
   }
 
-  var entries = load();
-  if (!entries) { entries = examples(); }
+  var stored = load();
+  var entries = stored ? stored.entries : examples();
+  var deleted = (stored && stored.deleted) || {};
+  entries.forEach(function (e) { if (!e.id) e.id = (e.ex ? 'ex' : '') + newId(); if (!e.t) e.t = Date.now(); });
   function hasEx() { return entries.some(function (e) { return e.ex; }); }
 
   // ----- state -----
@@ -397,7 +468,7 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
 
   // ----- events -----
   document.getElementById('grid').addEventListener('click', function (ev) { var b = ev.target.closest('.day'); if (!b) return; selected = b.dataset.k; var d = parse(selected); if (d.getMonth() !== view.m) { view.y = d.getFullYear(); view.m = d.getMonth(); } renderCalendar(); });
-  document.getElementById('dayList').addEventListener('click', function (ev) { var b = ev.target.closest('.del'); if (!b) return; entries.splice(+b.dataset.i, 1); save(); renderAll(); toast('Removed'); });
+  document.getElementById('dayList').addEventListener('click', function (ev) { var b = ev.target.closest('.del'); if (!b) return; var gone = entries.splice(+b.dataset.i, 1)[0]; if (gone && !gone.ex) deleted[gone.id] = Date.now(); save(); renderAll(); toast('Removed'); });
   document.getElementById('prevM').addEventListener('click', function () { view.m--; if (view.m < 0) { view.m = 11; view.y--; } renderCalendar(); });
   document.getElementById('nextM').addEventListener('click', function () { view.m++; if (view.m > 11) { view.m = 0; view.y++; } renderCalendar(); });
   document.querySelectorAll('.seg button').forEach(function (b) { b.addEventListener('click', function () { period = b.dataset.p; document.querySelectorAll('.seg button').forEach(function (x) { x.setAttribute('aria-pressed', x === b); }); renderTracked(); }); });
@@ -407,15 +478,19 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
   document.getElementById('clearEx2').addEventListener('click', clearEx);
   document.getElementById('openAdd').addEventListener('click', openSheet);
   document.getElementById('cancelAdd').addEventListener('click', closeSheet);
-  document.getElementById('scrim').addEventListener('click', closeSheet);
-  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && !document.getElementById('sheet').hidden) closeSheet(); });
+  document.getElementById('scrim').addEventListener('click', function () { if (!document.getElementById('settings').hidden) closeSettings(); else closeSheet(); });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Escape') return;
+    if (!document.getElementById('sheet').hidden) closeSheet();
+    if (!document.getElementById('settings').hidden) closeSettings();
+  });
   document.getElementById('pickers').addEventListener('click', function (ev) { var b = ev.target.closest('.chip'); if (!b) return; add.c = b.dataset.c; renderSheet(); });
   document.getElementById('durs').addEventListener('click', function (ev) { var b = ev.target.closest('button'); if (!b) return; add.m = +b.dataset.m; renderSheet(); });
   document.getElementById('dPrev').addEventListener('click', function () { add.d = key(addDays(parse(add.d), -1)); renderSheet(); });
   document.getElementById('dNext').addEventListener('click', function () { if (add.d < TODAYK) { add.d = key(addDays(parse(add.d), 1)); renderSheet(); } });
   document.getElementById('saveAdd').addEventListener('click', function () {
     if (!add.c) return;
-    var c = catById[add.c], k = grpById[c.g].kind, e = { d: add.d, c: add.c };
+    var c = catById[add.c], k = grpById[c.g].kind, e = { id: newId(), t: Date.now(), d: add.d, c: add.c };
     if (k === 'time') e.m = add.m;
     if (k === 'day' && entries.some(function (x) { return x.d === add.d && x.c === add.c; })) { closeSheet(); toast('Already logged'); return; }
     entries.push(e); save();
@@ -424,8 +499,137 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
   });
   window.addEventListener('hashchange', route);
 
+  // ----- settings sheet -----
+  function openSettings() {
+    showSync();
+    document.getElementById('backupMsg').textContent = '';
+    document.getElementById('scrim').hidden = false; document.getElementById('settings').hidden = false;
+    document.getElementById('closeSettings').focus();
+  }
+  function closeSettings() { document.getElementById('scrim').hidden = true; document.getElementById('settings').hidden = true; document.getElementById('openSettings').focus(); }
+  document.getElementById('openSettings').addEventListener('click', openSettings);
+  document.getElementById('closeSettings').addEventListener('click', closeSettings);
+
+  // ----- sync with a private GitHub Gist -----
+  var SYNC_FILE = 'hibi-sync.json';
+  function gh(method, path, body) {
+    return fetch('https://api.github.com' + path, {
+      method: method,
+      headers: Object.assign({ Authorization: 'Bearer ' + settings.ghToken, Accept: 'application/vnd.github+json' }, body ? { 'Content-Type': 'application/json' } : {}),
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (res) {
+      if (!res.ok) throw new Error(res.status === 401 ? 'GitHub did not accept this key. Check that it is correct and can use Gists.' : 'GitHub returned an error (' + res.status + '). Try again in a moment.');
+      return res.status === 204 ? null : res.json();
+    });
+  }
+  function fmtTime(t) { var d = new Date(t); return (key(d) === TODAYK ? 'today' : nice(d)) + ' at ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+  function showSync(msg) {
+    var on = !!settings.gistId;
+    document.getElementById('syncOff').hidden = on;
+    document.getElementById('syncOn').hidden = !on;
+    document.getElementById('syncMsg').textContent = msg || (on ? (settings.lastSync ? 'Connected. Last synced ' + fmtTime(settings.lastSync) + '.' : 'Connected.') : '');
+  }
+  // Combine two sets of entries: keep everything either side has, minus anything either side removed.
+  function mergeData(a, b) {
+    var del = {}, byId = {};
+    [a.deleted || {}, b.deleted || {}].forEach(function (m) { Object.keys(m).forEach(function (id) { del[id] = Math.max(del[id] || 0, m[id]); }); });
+    [a.entries || [], b.entries || []].forEach(function (list) { list.forEach(function (e) { if (!e || !e.id || e.ex || del[e.id]) return; var o = byId[e.id]; if (!o || (e.t || 0) > (o.t || 0)) byId[e.id] = e; }); });
+    return { entries: Object.keys(byId).map(function (id) { return byId[id]; }), deleted: del };
+  }
+  function realOnly() { return { entries: entries.filter(function (e) { return !e.ex; }), deleted: deleted }; }
+  function sameData(x, y) {
+    if (x.entries.length !== y.entries.length || Object.keys(x.deleted).length !== Object.keys(y.deleted).length) return false;
+    var ids = {}; x.entries.forEach(function (e) { ids[e.id] = e.t; });
+    return y.entries.every(function (e) { return ids[e.id] === e.t; });
+  }
+  function applyMerged(m) {
+    var ex = entries.filter(function (e) { return e.ex; });
+    entries = m.entries.concat(ex); deleted = m.deleted;
+    try { localStorage.setItem(STORE, JSON.stringify({ entries: entries, deleted: deleted })); } catch (e) {}
+    renderAll();
+  }
+  var syncing = false, syncAgain = false, syncTimer;
+  function scheduleSync() { if (!settings.gistId) return; clearTimeout(syncTimer); syncTimer = setTimeout(syncNow, 2500); }
+  function syncNow() {
+    if (!settings.gistId || !navigator.onLine) return Promise.resolve();
+    if (syncing) { syncAgain = true; return Promise.resolve(); }
+    syncing = true;
+    return gh('GET', '/gists/' + settings.gistId).then(function (g) {
+      var remote = {};
+      try { remote = JSON.parse((g.files[SYNC_FILE] || {}).content || '{}'); } catch (e) {}
+      remote = { entries: remote.entries || [], deleted: remote.deleted || {} };
+      var merged = mergeData(realOnly(), remote);
+      applyMerged(merged);
+      if (sameData(merged, remote)) return;
+      return gh('PATCH', '/gists/' + settings.gistId, { files: { [SYNC_FILE]: { content: JSON.stringify({ app: 'hibi', version: 1, entries: merged.entries, deleted: merged.deleted }) } } });
+    }).then(function () {
+      settings.lastSync = Date.now(); saveSettings();
+      if (!document.getElementById('settings').hidden) showSync();
+    }).catch(function (e) {
+      if (!document.getElementById('settings').hidden) showSync(e.message);
+    }).then(function () {
+      syncing = false;
+      if (syncAgain) { syncAgain = false; syncNow(); }
+    });
+  }
+  document.getElementById('syncConnect').addEventListener('click', function () {
+    settings.ghToken = document.getElementById('ghInput').value.trim();
+    settings.gistId = ''; settings.lastSync = 0; saveSettings();
+    if (!settings.ghToken) return showSync('Paste your GitHub key first.');
+    showSync('Connecting…');
+    gh('GET', '/gists?per_page=100').then(function (gists) {
+      var g = gists.filter(function (x) { return x.files && x.files[SYNC_FILE]; })[0];
+      return g || gh('POST', '/gists', { description: 'Hibi entries', public: false, files: { [SYNC_FILE]: { content: JSON.stringify({ app: 'hibi', version: 1, entries: [], deleted: {} }) } } });
+    }).then(function (g) {
+      settings.gistId = g.id; saveSettings();
+      document.getElementById('ghInput').value = '';
+      showSync('Connected. Syncing…');
+      return syncNow();
+    }).catch(function (e) { settings.gistId = ''; saveSettings(); showSync(e.message); });
+  });
+  document.getElementById('syncNowBtn').addEventListener('click', function () { showSync('Syncing…'); syncNow(); });
+  document.getElementById('syncDisconnect').addEventListener('click', function () {
+    settings = {}; saveSettings(); showSync('Disconnected. Your entries stay on this phone and in the Gist.');
+  });
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') syncNow(); });
+  window.addEventListener('online', function () { syncNow(); });
+
+  // ----- backup file -----
+  document.getElementById('exportBtn').addEventListener('click', function () {
+    var data = realOnly();
+    var json = JSON.stringify({ app: 'hibi', version: 1, exported: new Date().toISOString(), entries: data.entries, deleted: data.deleted }, null, 1);
+    var name = 'hibi-' + TODAYK + '.json';
+    var file = new File([json], name, { type: 'application/json' });
+    var msg = document.getElementById('backupMsg');
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: name }).then(function () { msg.textContent = 'Saved ' + data.entries.length + ' entries.'; }).catch(function () {});
+    } else {
+      var a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+      msg.textContent = 'Saved ' + data.entries.length + ' entries as ' + name + '.';
+    }
+  });
+  document.getElementById('importBtn').addEventListener('click', function () { document.getElementById('importFile').click(); });
+  document.getElementById('importFile').addEventListener('change', function (ev) {
+    var f = ev.target.files[0], msg = document.getElementById('backupMsg');
+    if (!f) return;
+    f.text().then(function (txt) {
+      var data = JSON.parse(txt);
+      if (Array.isArray(data)) data = { entries: data, deleted: {} };
+      if (!data || !Array.isArray(data.entries)) throw new Error('bad');
+      data.entries.forEach(function (e) { if (!e.id) e.id = newId(); if (!e.t) e.t = Date.now(); delete e.ex; });
+      var before = realOnly().entries.length;
+      var merged = mergeData(realOnly(), data);
+      applyMerged(merged); scheduleSync();
+      msg.textContent = 'Added ' + (merged.entries.length - before) + ' entries from ' + f.name + '.';
+    }).catch(function () { msg.textContent = 'This file is not a Hibi backup. Choose a file you exported from Hibi.'; })
+      .then(function () { ev.target.value = ''; });
+  });
+
   renderAll();
   route();
+  syncNow();
 })();
 </script>
 

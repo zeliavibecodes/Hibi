@@ -4,4 +4,4 @@ One place to log Japanese practice time, the things I finish, and days in Yugawa
 
 Open https://zeliavibecodes.github.io/Hibi/ in Safari, then Share › Add to Home Screen.
 
-Entries are saved on the device only (browser storage).
+Entries are saved on the phone. In Settings you can connect a private GitHub Gist so they sync between devices, and export or import a backup file.
