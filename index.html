@@ -88,6 +88,11 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
 .row { display: flex; align-items: center; gap: 12px; min-height: 44px; border-bottom: 1px solid var(--hair); }
 .row:last-child { border-bottom: 0; }
 .row .sw { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.daysec { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--muted); margin: 14px 0 0; }
+.daysec:first-child { margin-top: 0; }
+.done { width: 24px; height: 24px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; margin: 0 -8px; }
+.done svg { width: 14px; height: 14px; stroke: var(--paper); stroke-width: 2.6; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.row.big .name { font-weight: 600; }
 .row .name { flex: 1; min-width: 0; }
 .row .val { color: var(--muted); font-variant-numeric: tabular-nums; }
 .row .del { background: none; border: 0; color: var(--faint); width: 36px; height: 36px; border-radius: 8px; font-size: 18px; line-height: 1; }
@@ -400,11 +405,25 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
     var list = entries.map(function (e, i) { return { e: e, i: i }; }).filter(function (x) { return x.e.d === selected && !x.e.u; });
     list.sort(function (a, b) { return GROUPS.indexOf(grpById[catById[a.e.c].g]) - GROUPS.indexOf(grpById[catById[b.e.c].g]); });
     if (!list.length) { document.getElementById('dayList').innerHTML = '<p class="empty">Nothing logged.</p>'; return; }
-    document.getElementById('dayList').innerHTML = list.map(function (x) {
-      var c = catById[x.e.c], g = grpById[c.g];
-      var val = g.kind === 'time' ? fmtMins(x.e.m) : g.kind === 'day' ? 'Day' : 'Finished';
-      return '<div class="row"><span class="sw" style="background:' + g.color + '"></span><span class="name">' + c.name + '</span><span class="val">' + val +
-        '</span><button class="del" data-i="' + x.i + '" aria-label="Remove ' + c.name + '">×</button></div>';
+    // Finished things come first with a check mark, practice time after, then days away.
+    var KINDS = [
+      { kind: 'count', label: 'Finished' },
+      { kind: 'time', label: 'Japanese practice' },
+      { kind: 'day', label: 'Days away' }
+    ];
+    var CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+    document.getElementById('dayList').innerHTML = KINDS.map(function (k) {
+      var part = list.filter(function (x) { return grpById[catById[x.e.c].g].kind === k.kind; });
+      if (!part.length) return '';
+      var head = '<p class="daysec">' + k.label + (k.kind === 'time' ? ' · ' + fmtMins(part.reduce(function (a, x) { return a + x.e.m; }, 0)) : '') + '</p>';
+      return head + '<div>' + part.map(function (x) {
+        var c = catById[x.e.c], g = grpById[c.g];
+        var mark = k.kind === 'count' ? '<span class="done" style="background:' + g.color + '">' + CHECK + '</span>' : '<span class="sw" style="background:' + g.color + '"></span>';
+        var name = k.kind === 'count' ? 'Finished a ' + c.name.charAt(0).toLowerCase() + c.name.slice(1) : c.name;
+        var val = k.kind === 'time' ? fmtMins(x.e.m) : '';
+        return '<div class="row' + (k.kind === 'count' ? ' big' : '') + '">' + mark + '<span class="name">' + name.replace('Finished a japanese', 'Finished a Japanese') + '</span><span class="val">' + val +
+          '</span><button class="del" data-i="' + x.i + '" aria-label="Remove ' + name + '">×</button></div>';
+      }).join('') + '</div>';
     }).join('');
   }
 
