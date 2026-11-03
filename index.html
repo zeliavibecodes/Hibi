@@ -77,20 +77,19 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
 .day .n { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 15px; font-variant-numeric: tabular-nums; }
 .day.out .n { color: var(--faint); }
 .day.today .n { background: var(--ink); color: var(--paper); font-weight: 600; }
-/* Three looks for three kinds of things: a bar for practice time, a check badge for something finished, a tinted day for Yugawara. */
+/* Calendar marks, all in ink and greys:
+   practice time shades the day (none = page colour, 3 hours or more = strongest), a finished thing is one dot, a Yugawara day has a thin outline. */
 .day { position: relative; }
-.day.away { background: color-mix(in srgb, var(--c-places) 20%, transparent); }
-.day.sel { box-shadow: inset 0 0 0 1.5px var(--ink-2); }
-.pbar { width: 28px; height: 4px; border-radius: 2px; background: var(--fill-strong); overflow: hidden; }
-.pbar b { display: block; height: 100%; border-radius: 2px; background: var(--c-practice); }
-.day.out .pbar, .day.out .badges { opacity: .45; }
-.badges { position: absolute; top: 2px; right: 2px; display: flex; flex-direction: column; gap: 2px; }
-.badge { width: 13px; height: 13px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-.badge svg, .legend .badge svg { width: 9px; height: 9px; stroke: var(--paper); stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 12px 0 0; font-size: 12px; color: var(--muted); }
+.day.away { box-shadow: inset 0 0 0 1.5px var(--muted); }
+.day.sel { box-shadow: inset 0 0 0 2px var(--ink); }
+.mark { width: 6px; height: 6px; border-radius: 50%; }
+.mark.on { background: var(--ink); }
+.day.out { opacity: .45; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 12px 0 0; font-size: 12px; color: var(--muted); align-items: center; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
-.legend .pbar { width: 18px; }
-.legend .tint { width: 14px; height: 14px; border-radius: 4px; background: color-mix(in srgb, var(--c-places) 20%, transparent); }
+.legend .ramp { width: 44px; height: 12px; border-radius: 4px; background: linear-gradient(90deg, var(--paper), color-mix(in srgb, var(--ink) 37%, var(--paper))); box-shadow: inset 0 0 0 1px var(--hair); }
+.legend .mark { background: var(--ink); }
+.legend .ring { width: 14px; height: 14px; border-radius: 4px; box-shadow: inset 0 0 0 1.5px var(--muted); }
 .daydetail { margin-top: 22px; border-top: 1px solid var(--hair); padding-top: 14px; }
 .sec { font-size: 13px; font-weight: 600; color: var(--ink-2); margin: 0 0 6px; }
 .row { display: flex; align-items: center; gap: 12px; min-height: 44px; border-bottom: 1px solid var(--hair); }
@@ -398,26 +397,25 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
       if (i >= 35 && d.getMonth() !== view.m) break;
       var k = key(d), list = map[k] || [];
       var mins = list.reduce(function (a, e) { return a + (grpById[catById[e.c].g].kind === 'time' ? e.m : 0); }, 0);
-      var fin = GROUPS.filter(function (g) { return g.kind === 'count' && list.some(function (e) { return catById[e.c].g === g.id; }); });
+      var fin = list.some(function (e) { return grpById[catById[e.c].g].kind === 'count'; });
       var away = list.some(function (e) { return grpById[catById[e.c].g].kind === 'day'; });
       var cls = 'day' + (d.getMonth() !== view.m ? ' out' : '') + (k === TODAYK ? ' today' : '') + (k === selected ? ' sel' : '') + (away ? ' away' : '');
       var bits = [];
       if (mins) bits.push(fmtMins(mins) + ' of practice');
-      fin.forEach(function (g) { bits.push('finished ' + g.name.toLowerCase()); });
+      if (fin) bits.push('finished something');
       if (away) bits.push('Yugawara');
       var label = nice(d) + (bits.length ? ': ' + bits.join(', ') : '');
-      // The bar fills up to two hours of practice.
-      html += '<button class="' + cls + '" data-k="' + k + '" aria-label="' + label + '"><span class="n">' + d.getDate() + '</span>' +
-        '<span class="pbar"' + (mins ? '' : ' style="visibility:hidden"') + '>' + (mins ? '<b style="width:' + Math.min(100, mins / 120 * 100) + '%"></b>' : '') + '</span>' +
-        (fin.length ? '<span class="badges">' + fin.map(function (g) { return '<span class="badge" style="background:' + g.color + '">' + CHECK + '</span>'; }).join('') + '</span>' : '') +
-        '</button>';
+      // Five steps of shade: under 30m, under 1h, under 2h, under 3h, 3h or more.
+      var shade = !mins ? 0 : mins < 30 ? 7 : mins < 60 ? 13 : mins < 120 ? 20 : mins < 180 ? 28 : 37;
+      var bg = shade ? ' style="background:color-mix(in srgb, var(--ink) ' + shade + '%, var(--paper))"' : '';
+      html += '<button class="' + cls + '" data-k="' + k + '" aria-label="' + label + '"' + bg + '><span class="n">' + d.getDate() + '</span>' +
+        '<span class="mark' + (fin ? ' on' : '') + '"></span></button>';
     }
     document.getElementById('grid').innerHTML = html;
     document.getElementById('legend').innerHTML =
-      '<span><span class="pbar"><b style="width:60%"></b></span>Practice time</span>' +
-      '<span><span class="badge" style="background:var(--c-reading)">' + CHECK + '</span>Finished reading</span>' +
-      '<span><span class="badge" style="background:var(--c-games)">' + CHECK + '</span>Finished a game</span>' +
-      '<span><span class="tint"></span>Yugawara</span>';
+      '<span><span class="ramp"></span>Practice, 0 to 3h+</span>' +
+      '<span><span class="mark"></span>Finished</span>' +
+      '<span><span class="ring"></span>Yugawara</span>';
     renderDay();
   }
 
