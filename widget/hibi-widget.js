@@ -6,7 +6,7 @@
 // Home Screen widgets only get a few seconds to load, so the widget itself never reads your jpdb decks.
 // Your word list is saved on the phone whenever you open this script in Scriptable, and the widget picks
 // today's three words from that saved list. Practice comes from the Hibi Gist, with a short time limit.
-const VERSION = '2026-11-04.2';
+const VERSION = '2026-11-04.3';
 const SCRIPT_URL = 'https://raw.githubusercontent.com/zeliavibecodes/Hibi/main/widget/hibi-widget.js';
 
 const HIBI_URL = 'https://zeliavibecodes.github.io/Hibi/';
@@ -113,7 +113,7 @@ function stateOf(cs) {
 }
 function shortMeaning(chunks) {
   const first = (chunks && chunks[0] && chunks[0][0]) || '';
-  return first.replace(/\s*\(.*?\)\s*/g, ' ').trim().split(/;|,(?![^(]*\))/)[0].trim();
+  return first.replace(/\s*\(.*?\)\s*/g, ' ').trim().split(/;|,(?![^(]*\))| or /)[0].trim();
 }
 // Same three words all day; new ones tomorrow. Words that are due or failed come first, then ones you are learning.
 function pickForToday(list) {
@@ -189,6 +189,16 @@ function mix(pct) { // #EDEDEC over #0C0C0D at pct%
 // Five steps: under 30m, under 1h, under 2h, under 3h, 3h or more. Same as the Hibi calendar.
 const shade = (m) => !m ? 0 : m < 30 ? 7 : m < 60 ? 13 : m < 120 ? 20 : m < 180 ? 28 : 37;
 
+// Large widget size depends on the phone. Everything below is sized from the real width so nothing gets cut off.
+function largeSize() {
+  const w = Math.round(Math.min(Device.screenSize().width, Device.screenSize().height));
+  const table = { 440: [382, 400], 430: [364, 382], 428: [364, 382], 414: [360, 379], 402: [348, 366], 393: [338, 354], 390: [338, 354], 375: [329, 345], 360: [329, 345], 320: [292, 311] };
+  const k = Object.keys(table).map(Number).sort((a, b) => Math.abs(a - w) - Math.abs(b - w))[0];
+  return { w: table[k][0], h: table[k][1] };
+}
+const SIZE = largeSize();
+const INNER = SIZE.w - 32;
+
 function text(stack, str, font, color, opts = {}) {
   const t = stack.addText(str);
   t.font = font; t.textColor = color;
@@ -217,14 +227,15 @@ function build(entries, words) {
   // left: today
   const left = top.addStack();
   left.layoutVertically();
-  left.size = new Size(104, 0);
+  const LEFT = Math.round(INNER * 0.29);
+  left.size = new Size(LEFT, 0);
   text(left, MONTHS[today.getMonth()], Font.semiboldSystemFont(15), C.ink2);
   left.addSpacer(2);
-  text(left, String(today.getDate()), Font.boldSystemFont(today.getDate() > 9 ? 92 : 132), C.ink, { lines: 1, scale: 0.5 });
+  text(left, String(today.getDate()), Font.boldSystemFont(today.getDate() > 9 ? 92 : 132), C.ink, { lines: 1, scale: 0.4 });
   text(left, DAYS[today.getDay()], Font.semiboldSystemFont(15), C.ink);
   left.addSpacer();
 
-  top.addSpacer(12);
+  top.addSpacer(10);
 
   // right: the month
   const cal = top.addStack();
@@ -233,7 +244,7 @@ function build(entries, words) {
   const start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
   const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);
   const rows = Math.ceil((((first.getDay() + 6) % 7) + last.getDate()) / 7);
-  const cw = 29, ch = rows > 5 ? 30 : 35, gap = 2;
+  const gap = 2, cw = Math.floor((INNER - LEFT - 10 - gap * 6) / 7), ch = rows > 5 ? 30 : 35;
 
   const head = cal.addStack();
   for (const [i, l] of ['M', 'T', 'W', 'T', 'F', 'S', 'S'].entries()) {
@@ -258,7 +269,7 @@ function build(entries, words) {
       if (k === TODAY) { c.borderWidth = 1.5; c.borderColor = C.ink; }
       c.addSpacer();
       const line = c.addStack(); line.addSpacer();
-      text(line, String(d.getDate()), k === TODAY ? Font.boldSystemFont(12) : Font.systemFont(12), inMonth ? C.ink : C.muted);
+      text(line, String(d.getDate()), k === TODAY ? Font.boldSystemFont(12) : Font.systemFont(12), inMonth ? C.ink : C.muted, { lines: 1, scale: 0.6 });
       line.addSpacer();
       const dotRow = c.addStack(); dotRow.size = new Size(cw, 6); dotRow.addSpacer();
       if (fin[k]) { const dot = dotRow.addStack(); dot.size = new Size(3, 3); dot.cornerRadius = 1.5; dot.backgroundColor = C.ink; }
@@ -281,7 +292,7 @@ function build(entries, words) {
     words.forEach((wd, i) => {
       const s = wordsRow.addStack();
       s.layoutVertically();
-      s.size = new Size(100, 0);
+      s.size = new Size(Math.floor((INNER - 24) / 3), 0);
       const showReading = wd.reading && wd.reading !== wd.spelling;
       text(s, showReading ? wd.reading : ' ', MINCHO(9), C.muted, { lines: 1, scale: 0.7 });
       text(s, wd.spelling, MINCHO(24, false), C.ink, { lines: 1, scale: 0.5 });
