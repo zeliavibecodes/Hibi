@@ -315,6 +315,7 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
   // Each entry: { id, t (time it was saved), d (day), c (category), m (minutes, for time) }.
   // Removed entries are remembered in `deleted` (id -> time) so a removal also reaches other devices.
   var STORE = 'hibi.v2', OLD_STORE = 'hibi.v1', SETTINGS = 'hibi.settings';
+  function escHtml(t) { return String(t).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
   function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
   function load() {
     try {
@@ -441,6 +442,7 @@ h1 { font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -0.025
         var mark = k.kind === 'count' ? '<span class="done" style="background:' + g.color + '">' + CHECK + '</span>' : '<span class="sw" style="background:' + g.color + '"></span>';
         var name = k.kind === 'count' ? 'Finished a ' + c.name.charAt(0).toLowerCase() + c.name.slice(1) : c.name;
         var val = k.kind === 'time' ? fmtMins(x.e.m) : '';
+        if (x.e.title) { name = escHtml(x.e.title); val = c.name; }   // books finished in Yomu carry their title
         return '<div class="row' + (k.kind === 'count' ? ' big' : '') + '">' + mark + '<span class="name">' + name.replace('Finished a japanese', 'Finished a Japanese') + '</span><span class="val">' + val +
           '</span><button class="del" data-i="' + x.i + '" aria-label="Remove ' + name + '">×</button></div>';
       }).join('') + '</div>';
